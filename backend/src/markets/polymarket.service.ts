@@ -19,8 +19,11 @@ interface PolymarketMarket {
   question_id?: string;
   end_date_iso?: string;
   endDate?: string; // gamma alias
+  endDateIso?: string; // gamma alias
   created_at?: string;
   createdTime?: string; // gamma alias
+  startDate?: string; // gamma alias
+  startDateIso?: string; // gamma alias
   accepting_order_timestamp?: string;
   openTime?: string; // gamma alias
   tags?: string[];
@@ -50,7 +53,14 @@ export class PolymarketService {
 
   constructor(private readonly http: HttpService) {}
 
+  // Prefer events endpoint for fresher markets; fallback to markets if needed.
   async fetchMarkets(limit = 200): Promise<NormalizedMarket[]> {
+    const fromHotMarkets = await this.fetchTopMarkets(limit);
+    if (fromHotMarkets.length > 0) return fromHotMarkets;
+
+    const fromEvents = await this.fetchFromEvents(limit);
+    if (fromEvents.length > 0) return fromEvents;
+
     for (const base of this.baseUrls) {
       try {
         const url = this.buildUrl(base, limit);
@@ -79,7 +89,9 @@ export class PolymarketService {
 
         const filtered = this.filterRecent(data);
         this.logger.log(`Filtered to ${filtered.length} valid markets`);
-        return filtered.map((m) => this.toNormalized(m));
+        const normalized = filtered.map((m) => this.toNormalized(m));
+        this.logSample(normalized, 'markets');
+        return normalized;
       } catch (err) {
         this.logger.warn(
           `Polymarket endpoint failed (${base}), trying next`,
@@ -89,6 +101,72 @@ export class PolymarketService {
     }
 
     this.logger.error('All Polymarket endpoints failed, returning empty list');
+    return [];
+  }
+
+  private async fetchFromEvents(limit: number): Promise<NormalizedMarket[]> {
+    const eventBases = (
+      process.env.POLYMARKET_EVENTS_BASE_URL ??
+      'https://gamma-api.polymarket.com/events'
+    )
+      .split(',')
+      .map((u) => u.trim())
+      .filter(Boolean);
+
+    for (const base of eventBases) {
+      try {
+        const url = this.buildEventsUrl(base, limit);
+        const response = await lastValueFrom(
+          this.http.get(url, {
+            validateStatus: () => true,
+          }),
+        );
+
+        if (response.status >= 400) {
+          this.logger.warn(`Polymarket events HTTP ${response.status} from ${base}`);
+          continue;
+        }
+
+        const events = response.data?.events ?? response.data ?? [];
+        if (!Array.isArray(events) || events.length === 0) {
+          this.logger.warn(`Polymarket events empty from ${base}`);
+          continue;
+        }
+
+        const markets: PolymarketMarket[] = [];
+        for (const evt of events) {
+          const evtSlug = evt?.slug;
+          const evtMarkets =
+            evt?.markets ??
+            evt?.eventMarkets ??
+            evt?.marketsData ??
+            evt?.marketContracts ??
+            [];
+          if (!Array.isArray(evtMarkets)) continue;
+          for (const m of evtMarkets) {
+            const adapted = this.adaptGammaShape(m);
+            adapted.eventSlug = adapted.eventSlug ?? evtSlug;
+            markets.push(adapted);
+          }
+        }
+
+        this.logger.log(
+          `Polymarket events fetched ${events.length} events, ${markets.length} markets from ${base}`,
+        );
+
+        const filtered = this.filterRecent(markets);
+        this.logger.log(`Filtered to ${filtered.length} valid markets (events)`);
+        const normalized = filtered.map((m) => this.toNormalized(m));
+        this.logSample(normalized, 'events');
+        return normalized;
+      } catch (err) {
+        this.logger.warn(
+          `Polymarket events endpoint failed (${base}), trying next`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
     return [];
   }
 
@@ -102,6 +180,101 @@ export class PolymarketService {
       limit: `${limit}`,
       offset: '0',
       active: 'true',
+      start_date_min: startDate.toISOString().split('.')[0] + 'Z',
+    });
+    return `${base}${hasQuery ? '&' : '?'}${params.toString()}`;
+  }
+
+  private async fetchTopMarkets(limit: number): Promise<NormalizedMarket[]> {
+    for (const base of this.baseUrls) {
+      try {
+        const url = this.buildHotMarketsUrl(base, limit);
+        const response = await lastValueFrom(
+          this.http.get(url, { validateStatus: () => true }),
+        );
+
+        if (response.status >= 400) {
+          this.logger.warn(
+            `Polymarket hot-markets HTTP ${response.status} from ${base}`,
+          );
+          continue;
+        }
+
+        const raw = Array.isArray(response.data)
+          ? response.data
+          : response.data?.data ?? [];
+        const data: PolymarketMarket[] = raw.map((m: any) =>
+          this.adaptGammaShape(m),
+        );
+
+        this.logger.log(
+          `Polymarket hot-markets fetched ${data.length} markets from ${base}`,
+        );
+
+        const filtered = this.filterRecent(data);
+        this.logger.log(`Filtered to ${filtered.length} valid markets (hot)`);
+        if (filtered.length > 0) {
+          const normalized = filtered.map((m) => this.toNormalized(m));
+          this.logSample(normalized, 'hot');
+          return normalized;
+        }
+      } catch (err) {
+        this.logger.warn(
+          `Polymarket hot-markets endpoint failed (${base}), trying next`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+    return [];
+  }
+
+  private buildHotMarketsUrl(base: string, limit: number): string {
+    const hasQuery = base.includes('?');
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const hardFloor = new Date('2025-12-01T00:00:00Z');
+    const startDate = threeDaysAgo > hardFloor ? threeDaysAgo : hardFloor;
+
+    const params = new URLSearchParams({
+      limit: `${limit}`,
+      offset: '0',
+      active: 'true',
+      closed: 'false',
+      order: 'volume24hr',
+      direction: 'desc',
+      start_date_min: startDate.toISOString().split('.')[0] + 'Z',
+    });
+    return `${base}${hasQuery ? '&' : '?'}${params.toString()}`;
+  }
+
+  private logSample(markets: NormalizedMarket[], label: string): void {
+    if (process.env.POLYMARKET_LOG_SAMPLES !== 'true') {
+      return;
+    }
+    const sample = markets.slice(0, 15).map((m) => ({
+      id: m.id,
+      probability: m.probability,
+      volume: m.volume,
+      volume24h: m.volume24h,
+      liquidity: m.liquidity,
+      createdAt: m.createdAt,
+      endDate: m.endDate,
+      // 便于手动核算 trendScore：activity/freshness/closingSoon/uncertainty 在 TrendService 里计算
+    }));
+    this.logger.log(`Polymarket sample (${label}):\n${JSON.stringify(sample, null, 2)}`);
+  }
+
+  private buildEventsUrl(base: string, limit: number): string {
+    const hasQuery = base.includes('?');
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+    const hardFloor = new Date('2025-12-01T00:00:00Z');
+    const startDate = threeDaysAgo > hardFloor ? threeDaysAgo : hardFloor;
+
+    const params = new URLSearchParams({
+      limit: `${limit}`,
+      offset: '0',
+      closed: 'false',
+      order: 'id',
+      ascending: 'false',
       start_date_min: startDate.toISOString().split('.')[0] + 'Z',
     });
     return `${base}${hasQuery ? '&' : '?'}${params.toString()}`;
@@ -178,15 +351,14 @@ export class PolymarketService {
     const end_date_iso =
       m.end_date_iso ??
       m.endDate ??
-      m.close_date ??
-      m.closeDate ??
+      m.endDateIso ??
       m.resolution_date ??
       m.resolutionDate;
     const created_at =
       m.created_at ??
       m.createdTime ??
-      m.open_date ??
-      m.openDate ??
+      m.startDate ??
+      m.startDateIso ??
       m.openTime;
 
     const volume =

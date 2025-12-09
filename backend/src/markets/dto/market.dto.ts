@@ -14,6 +14,9 @@ export interface NormalizedMarket {
   url?: string;
   lastUpdated?: string;
   trendScore?: number;
+  // internal fields for scoring (not exposed)
+  _activity?: number;
+  _activityRaw?: number;
 }
 
 export interface TrendOptions {
