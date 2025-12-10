@@ -43,6 +43,9 @@ let KalshiService = KalshiService_1 = class KalshiService {
                 const filtered = this.filterRecent(markets);
                 this.logger.log(`Filtered to ${filtered.length} valid markets`);
                 const normalized = filtered.map((m) => this.toNormalized(m));
+                if (markets.length > 0) {
+                    this.logger.log(`[DEBUG] First Kalshi market raw: ${JSON.stringify(markets[0], null, 2)}`);
+                }
                 this.logSample(normalized);
                 return normalized;
             }
@@ -68,6 +71,7 @@ let KalshiService = KalshiService_1 = class KalshiService {
     }
     toNormalized(market) {
         const probability = this.deriveProbability(market);
+        const url = `https://kalshi.com/markets?q=${encodeURIComponent(market.title)}`;
         return {
             platform: 'Kalshi',
             id: market.id ?? market.ticker ?? market.title,
@@ -80,9 +84,7 @@ let KalshiService = KalshiService_1 = class KalshiService {
             createdAt: market.created_time ?? market.open_time,
             endDate: market.close_time ?? market.expiration_time ?? market.latest_expiration_time,
             category: market.category ? [market.category] : undefined,
-            url: market.ticker
-                ? `https://kalshi.com/markets/${market.ticker}`
-                : undefined,
+            url,
             lastUpdated: new Date().toISOString(),
         };
     }

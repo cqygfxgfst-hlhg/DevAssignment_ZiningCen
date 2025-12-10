@@ -34,21 +34,59 @@ let MarketsController = MarketsController_1 = class MarketsController {
         this.cache = cache;
         this.snapshots = snapshots;
     }
-    async getTrending(platform, limit = '20', endWithinHours, createdWithinHours) {
+    async getTrending(platform, limit = '20', endWithinHours, createdWithinHours, personalized, prefCategory, prefPlatform, prefHorizon, prefVolatility) {
         const parsedLimit = Number(limit) || 20;
-        this.logger.log(`GET /markets/trending platform=${platform ?? 'all'} limit=${parsedLimit}`);
-        const cached = await this.cache.get(platform, parsedLimit, endWithinHours, createdWithinHours);
-        if (cached && cached.length > 0) {
-            this.logger.log(`Cache hit for platform=${platform ?? 'all'} limit=${parsedLimit}`);
-            return cached;
+        const isPersonalized = personalized === 'true';
+        this.logger.log(`GET /markets/trending platform=${platform ?? 'all'} limit=${parsedLimit} personalized=${isPersonalized}`);
+        if (!isPersonalized) {
+            const cached = await this.cache.get(platform, parsedLimit, endWithinHours, createdWithinHours);
+            if (cached && cached.length > 0) {
+                this.logger.log(`Cache hit for platform=${platform ?? 'all'} limit=${parsedLimit}`);
+                return cached;
+            }
         }
         const markets = await this.collectMarkets(platform);
         this.logger.log(`Collected ${markets.length} markets`);
         const filtered = this.applyTimeFilters(markets, endWithinHours, createdWithinHours);
-        const ranked = this.trend.rank(filtered, parsedLimit);
-        void this.snapshots.save(ranked);
-        await this.cache.set(platform, parsedLimit, ranked, endWithinHours, createdWithinHours);
+        let ranked;
+        if (isPersonalized) {
+            const prefs = this.parsePreferences(prefCategory, prefPlatform, prefHorizon, prefVolatility);
+            ranked = this.trend.rank(filtered, parsedLimit, prefs);
+        }
+        else {
+            ranked = this.trend.rank(filtered, parsedLimit);
+        }
+        if (!isPersonalized) {
+            void this.snapshots.save(ranked);
+            await this.cache.set(platform, parsedLimit, ranked, endWithinHours, createdWithinHours);
+        }
         return ranked;
+    }
+    parsePreferences(cat, plat, hor, vol) {
+        const preferences = {};
+        if (cat) {
+            preferences.categories = cat.split(',').map((c) => c.trim());
+        }
+        if (plat) {
+            const weights = {};
+            plat.split(',').forEach((p) => {
+                const [name, w] = p.split(':');
+                const val = parseFloat(w);
+                if (name && !isNaN(val)) {
+                    weights[name.trim()] = val;
+                }
+            });
+            if (Object.keys(weights).length > 0) {
+                preferences.platformWeights = weights;
+            }
+        }
+        if (hor === 'short' || hor === 'medium' || hor === 'long') {
+            preferences.timeHorizon = hor;
+        }
+        if (vol === 'high' || vol === 'low') {
+            preferences.volatility = vol;
+        }
+        return preferences;
     }
     async collectMarkets(platform) {
         if (platform === 'Polymarket') {
@@ -95,8 +133,13 @@ __decorate([
     __param(1, (0, common_1.Query)('limit')),
     __param(2, (0, common_1.Query)('endWithinHours')),
     __param(3, (0, common_1.Query)('createdWithinHours')),
+    __param(4, (0, common_1.Query)('personalized')),
+    __param(5, (0, common_1.Query)('prefCategory')),
+    __param(6, (0, common_1.Query)('prefPlatform')),
+    __param(7, (0, common_1.Query)('prefHorizon')),
+    __param(8, (0, common_1.Query)('prefVolatility')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object, String, String]),
+    __metadata("design:paramtypes", [Object, Object, String, String, String, String, String, String, String]),
     __metadata("design:returntype", Promise)
 ], MarketsController.prototype, "getTrending", null);
 exports.MarketsController = MarketsController = MarketsController_1 = __decorate([

@@ -1,8 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { NormalizedMarket } from './dto/market.dto';
+import { Injectable, Logger } from '@nestjs/common';
+import { NormalizedMarket, UserPreferences } from './dto/market.dto';
 
 @Injectable()
 export class TrendService {
+  private readonly logger = new Logger(TrendService.name);
+
   score(market: NormalizedMarket): number {
     // 活跃度用批内 z-score + sigmoid 放大区分度
     const activity = market._activity ?? 0; // 占位，后续 rank() 会填充
@@ -19,7 +21,11 @@ export class TrendService {
     return Number(this.clamp(stretched).toFixed(4));
   }
 
-  rank(markets: NormalizedMarket[], limit = 20): NormalizedMarket[] {
+  rank(
+    markets: NormalizedMarket[],
+    limit = 20,
+    preferences?: UserPreferences,
+  ): NormalizedMarket[] {
     if (markets.length === 0) return [];
 
     // 预计算活跃度原始分
@@ -47,7 +53,27 @@ export class TrendService {
       return { ...m, trendScore };
     });
 
-    const sorted = scored.sort((a, b) => (b.trendScore ?? 0) - (a.trendScore ?? 0));
+    // 个性化重排序：如果传入了偏好，则调整分数
+    let finalScored = scored;
+    if (preferences) {
+      this.logger.log(`Applying preferences: ${JSON.stringify(preferences)}`);
+      finalScored = scored.map((m) => {
+        const boost = this.calculateUserBoost(m, preferences);
+        // 放大倍数，避免改变基础分太小 (min 0.1 避免负分)
+        const multiplier = Math.max(0.1, 1 + boost);
+        // if (boost > 0) {
+        //   this.logger.log(`Boosted ${m.id} by ${boost} -> ${m.trendScore}*${multiplier}`);
+        // }
+        return {
+          ...m,
+          trendScore: (m.trendScore ?? 0) * multiplier,
+        };
+      });
+    }
+
+    const sorted = finalScored.sort(
+      (a, b) => (b.trendScore ?? 0) - (a.trendScore ?? 0),
+    );
 
     // 多平台曝光：保证有 Kalshi，但放到列表尾部。
     const minKalshi = Math.min(
@@ -137,6 +163,62 @@ export class TrendService {
   private clamp(value: number): number {
     if (Number.isNaN(value)) return 0;
     return Math.min(1, Math.max(0, value));
+  }
+
+  private calculateUserBoost(
+    m: NormalizedMarket,
+    prefs: UserPreferences,
+  ): number {
+    let boost = 0;
+
+    // 1. Category Preference
+    if (prefs.categories && prefs.categories.length > 0 && m.category) {
+      const match = m.category.some((c) =>
+        prefs.categories!.some((pc) =>
+          c.toLowerCase().includes(pc.toLowerCase()),
+        ),
+      );
+      if (match) boost += 0.5;
+    }
+
+    // 2. Platform Weights
+    if (prefs.platformWeights) {
+      const w = prefs.platformWeights[m.platform];
+      if (w !== undefined) {
+        boost += w - 1; // e.g. 1.2 -> +0.2, 0.8 -> -0.2
+      }
+    }
+
+    // 3. Time Horizon
+    if (prefs.timeHorizon && m.endDate) {
+      const now = Date.now();
+      const end = new Date(m.endDate).getTime();
+      const days = (end - now) / (1000 * 60 * 60 * 24);
+
+      if (!Number.isNaN(days)) {
+        if (prefs.timeHorizon === 'short' && days <= 7) boost += 0.3;
+        else if (
+          prefs.timeHorizon === 'medium' &&
+          days > 7 &&
+          days <= 30
+        )
+          boost += 0.3;
+        else if (prefs.timeHorizon === 'long' && days > 30) boost += 0.3;
+      }
+    }
+
+    // 4. Volatility
+    if (prefs.volatility) {
+      const p = m.probability;
+      const dist = Math.abs(p - 0.5);
+      // High volatility/uncertainty: price near 0.5
+      if (prefs.volatility === 'high' && dist <= 0.2) boost += 0.3;
+      // Low volatility/stability: price near 0 or 1
+      if (prefs.volatility === 'low' && dist >= 0.35) boost += 0.3;
+    }
+
+    // 限制最大 boost，防止过度干预
+    return Math.min(boost, 3.0);
   }
 }
 

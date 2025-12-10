@@ -5,10 +5,12 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var TrendService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TrendService = void 0;
 const common_1 = require("@nestjs/common");
-let TrendService = class TrendService {
+let TrendService = TrendService_1 = class TrendService {
+    logger = new common_1.Logger(TrendService_1.name);
     score(market) {
         const activity = market._activity ?? 0;
         const freshness = this.freshnessScore(market);
@@ -20,7 +22,7 @@ let TrendService = class TrendService {
             0.1 * Math.sqrt(this.clamp(uncertainty));
         return Number(this.clamp(stretched).toFixed(4));
     }
-    rank(markets, limit = 20) {
+    rank(markets, limit = 20, preferences) {
         if (markets.length === 0)
             return [];
         const withActivity = markets.map((m) => ({
@@ -40,7 +42,19 @@ let TrendService = class TrendService {
             const trendScore = this.score({ ...m, _activity: aNorm });
             return { ...m, trendScore };
         });
-        const sorted = scored.sort((a, b) => (b.trendScore ?? 0) - (a.trendScore ?? 0));
+        let finalScored = scored;
+        if (preferences) {
+            this.logger.log(`Applying preferences: ${JSON.stringify(preferences)}`);
+            finalScored = scored.map((m) => {
+                const boost = this.calculateUserBoost(m, preferences);
+                const multiplier = Math.max(0.1, 1 + boost);
+                return {
+                    ...m,
+                    trendScore: (m.trendScore ?? 0) * multiplier,
+                };
+            });
+        }
+        const sorted = finalScored.sort((a, b) => (b.trendScore ?? 0) - (a.trendScore ?? 0));
         const minKalshi = Math.min(Number(process.env.MIN_KALSHI_IN_TREND ?? 3) || 3, limit);
         const kalshiSorted = sorted.filter((m) => m.platform === 'Kalshi');
         const nonKalshiSorted = sorted.filter((m) => m.platform !== 'Kalshi');
@@ -123,9 +137,47 @@ let TrendService = class TrendService {
             return 0;
         return Math.min(1, Math.max(0, value));
     }
+    calculateUserBoost(m, prefs) {
+        let boost = 0;
+        if (prefs.categories && prefs.categories.length > 0 && m.category) {
+            const match = m.category.some((c) => prefs.categories.some((pc) => c.toLowerCase().includes(pc.toLowerCase())));
+            if (match)
+                boost += 0.5;
+        }
+        if (prefs.platformWeights) {
+            const w = prefs.platformWeights[m.platform];
+            if (w !== undefined) {
+                boost += w - 1;
+            }
+        }
+        if (prefs.timeHorizon && m.endDate) {
+            const now = Date.now();
+            const end = new Date(m.endDate).getTime();
+            const days = (end - now) / (1000 * 60 * 60 * 24);
+            if (!Number.isNaN(days)) {
+                if (prefs.timeHorizon === 'short' && days <= 7)
+                    boost += 0.3;
+                else if (prefs.timeHorizon === 'medium' &&
+                    days > 7 &&
+                    days <= 30)
+                    boost += 0.3;
+                else if (prefs.timeHorizon === 'long' && days > 30)
+                    boost += 0.3;
+            }
+        }
+        if (prefs.volatility) {
+            const p = m.probability;
+            const dist = Math.abs(p - 0.5);
+            if (prefs.volatility === 'high' && dist <= 0.2)
+                boost += 0.3;
+            if (prefs.volatility === 'low' && dist >= 0.35)
+                boost += 0.3;
+        }
+        return Math.min(boost, 3.0);
+    }
 };
 exports.TrendService = TrendService;
-exports.TrendService = TrendService = __decorate([
+exports.TrendService = TrendService = TrendService_1 = __decorate([
     (0, common_1.Injectable)()
 ], TrendService);
 //# sourceMappingURL=trend.service.js.map

@@ -1,7 +1,7 @@
 import { Controller, Get, Query, Logger } from '@nestjs/common';
 import { KalshiService } from './kalshi.service';
 import { PolymarketService } from './polymarket.service';
-import { NormalizedMarket, TrendOptions } from './dto/market.dto';
+import { NormalizedMarket, TrendOptions, UserPreferences } from './dto/market.dto';
 import { TrendService } from './trend.service';
 import { MarketsCache } from './markets.cache';
 import { SnapshotService } from './snapshot.service';
@@ -24,23 +24,33 @@ export class MarketsController {
     @Query('limit') limit = '20',
     @Query('endWithinHours') endWithinHours?: string,
     @Query('createdWithinHours') createdWithinHours?: string,
+    @Query('personalized') personalized?: string,
+    @Query('prefCategory') prefCategory?: string,
+    @Query('prefPlatform') prefPlatform?: string,
+    @Query('prefHorizon') prefHorizon?: string,
+    @Query('prefVolatility') prefVolatility?: string,
   ): Promise<NormalizedMarket[]> {
     const parsedLimit = Number(limit) || 20;
+    const isPersonalized = personalized === 'true';
+
     this.logger.log(
-      `GET /markets/trending platform=${platform ?? 'all'} limit=${parsedLimit}`,
+      `GET /markets/trending platform=${platform ?? 'all'} limit=${parsedLimit} personalized=${isPersonalized}`,
     );
 
-    const cached = await this.cache.get(
-      platform,
-      parsedLimit,
-      endWithinHours,
-      createdWithinHours,
-    );
-    if (cached && cached.length > 0) {
-      this.logger.log(
-        `Cache hit for platform=${platform ?? 'all'} limit=${parsedLimit}`,
+    // Skip cache for personalized requests
+    if (!isPersonalized) {
+      const cached = await this.cache.get(
+        platform,
+        parsedLimit,
+        endWithinHours,
+        createdWithinHours,
       );
-      return cached;
+      if (cached && cached.length > 0) {
+        this.logger.log(
+          `Cache hit for platform=${platform ?? 'all'} limit=${parsedLimit}`,
+        );
+        return cached;
+      }
     }
 
     const markets = await this.collectMarkets(platform);
@@ -50,17 +60,74 @@ export class MarketsController {
       endWithinHours,
       createdWithinHours,
     );
-    const ranked = this.trend.rank(filtered, parsedLimit);
-    // Persist snapshot (best-effort)
-    void this.snapshots.save(ranked);
-    await this.cache.set(
-      platform,
-      parsedLimit,
-      ranked,
-      endWithinHours,
-      createdWithinHours,
-    );
+
+    let ranked: NormalizedMarket[];
+    if (isPersonalized) {
+      const prefs = this.parsePreferences(
+        prefCategory,
+        prefPlatform,
+        prefHorizon,
+        prefVolatility,
+      );
+      // Pass preferences to rank (method signature update needed in next step, casting for now or update service next)
+      // For this step, we just prepare the input. To avoid breaking build, we need to update TrendService too.
+      // But user said "Step 1". I will update TrendService signature in this step too to keep it consistent.
+      ranked = this.trend.rank(filtered, parsedLimit, prefs);
+    } else {
+      ranked = this.trend.rank(filtered, parsedLimit);
+    }
+
+    // Persist snapshot (best-effort) only for non-personalized standard ranking?
+    // Or save it anyway? Usually snapshots are for "global trending".
+    if (!isPersonalized) {
+      void this.snapshots.save(ranked);
+      await this.cache.set(
+        platform,
+        parsedLimit,
+        ranked,
+        endWithinHours,
+        createdWithinHours,
+      );
+    }
     return ranked;
+  }
+
+  private parsePreferences(
+    cat?: string,
+    plat?: string,
+    hor?: string,
+    vol?: string,
+  ): UserPreferences {
+    const preferences: UserPreferences = {};
+
+    if (cat) {
+      preferences.categories = cat.split(',').map((c) => c.trim());
+    }
+
+    if (plat) {
+      // Format: "Polymarket:1.2,Kalshi:0.8"
+      const weights: Record<string, number> = {};
+      plat.split(',').forEach((p) => {
+        const [name, w] = p.split(':');
+        const val = parseFloat(w);
+        if (name && !isNaN(val)) {
+          weights[name.trim()] = val;
+        }
+      });
+      if (Object.keys(weights).length > 0) {
+        preferences.platformWeights = weights;
+      }
+    }
+
+    if (hor === 'short' || hor === 'medium' || hor === 'long') {
+      preferences.timeHorizon = hor;
+    }
+
+    if (vol === 'high' || vol === 'low') {
+      preferences.volatility = vol;
+    }
+
+    return preferences;
   }
 
   private async collectMarkets(

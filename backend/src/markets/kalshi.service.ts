@@ -65,10 +65,13 @@ export class KalshiService {
         );
         const filtered = this.filterRecent(markets);
         this.logger.log(`Filtered to ${filtered.length} valid markets`);
-        const normalized = filtered.map((m) => this.toNormalized(m));
-        this.logSample(normalized);
-        return normalized;
-      } catch (err) {
+    const normalized = filtered.map((m) => this.toNormalized(m));
+    if (markets.length > 0) {
+      this.logger.log(`[DEBUG] First Kalshi market raw: ${JSON.stringify(markets[0], null, 2)}`);
+    }
+    this.logSample(normalized);
+    return normalized;
+  } catch (err) {
         this.logger.warn(
           `Kalshi endpoint failed (${baseUrl}), trying next or falling back`,
           err instanceof Error ? err.message : err,
@@ -97,6 +100,12 @@ export class KalshiService {
   private toNormalized(market: KalshiMarket): NormalizedMarket {
     const probability = this.deriveProbability(market);
 
+    // 构造搜索链接作为兜底，因为 Kalshi 的 URL 需要 series_slug，而 API 响应可能未提供
+    // 示例 URL: https://kalshi.com/markets?q=Will%20Elon%20Musk%20be...
+    const url = `https://kalshi.com/markets?q=${encodeURIComponent(
+      market.title,
+    )}`;
+
     return {
       platform: 'Kalshi',
       id: market.id ?? market.ticker ?? market.title,
@@ -111,9 +120,7 @@ export class KalshiService {
       endDate:
         market.close_time ?? market.expiration_time ?? market.latest_expiration_time,
       category: market.category ? [market.category] : undefined,
-      url: market.ticker
-        ? `https://kalshi.com/markets/${market.ticker}`
-        : undefined,
+      url,
       lastUpdated: new Date().toISOString(),
     };
   }
