@@ -47,10 +47,56 @@ export class TrendService {
       return { ...m, trendScore };
     });
 
-    return scored
-      .sort((a, b) => (b.trendScore ?? 0) - (a.trendScore ?? 0))
-      .slice(0, limit)
-      .map(({ _activityRaw, _activity, ...rest }) => rest);
+    const sorted = scored.sort((a, b) => (b.trendScore ?? 0) - (a.trendScore ?? 0));
+
+    // 多平台曝光：保证有 Kalshi，但放到列表尾部。
+    const minKalshi = Math.min(
+      Number(process.env.MIN_KALSHI_IN_TREND ?? 3) || 3,
+      limit,
+    );
+    const kalshiSorted = sorted.filter((m) => m.platform === 'Kalshi');
+    const nonKalshiSorted = sorted.filter((m) => m.platform !== 'Kalshi');
+
+    const result: typeof scored = [];
+    const pickedIds = new Set<string>();
+
+    // 先放非 Kalshi，预留至少 minKalshi 个位置
+    for (const m of nonKalshiSorted) {
+      if (result.length >= Math.max(0, limit - minKalshi)) break;
+      if (pickedIds.has(m.id)) continue;
+      pickedIds.add(m.id);
+      result.push(m);
+    }
+
+    // 追加 Kalshi，尽量保证 minKalshi（如有），位置靠后
+    for (const m of kalshiSorted) {
+      if (result.length >= limit) break;
+      if (pickedIds.has(m.id)) continue;
+      pickedIds.add(m.id);
+      result.push(m);
+      if (result.length >= limit) break;
+      if (result.length >= limit - (kalshiSorted.length - result.filter((x) => x.platform === 'Kalshi').length)) break;
+    }
+
+    // 若 Kalshi 不足或仍有空位，再用剩余非 Kalshi 补足
+    if (result.length < limit) {
+      for (const m of nonKalshiSorted) {
+        if (result.length >= limit) break;
+        if (pickedIds.has(m.id)) continue;
+        pickedIds.add(m.id);
+        result.push(m);
+      }
+      if (result.length < limit) {
+        for (const m of kalshiSorted) {
+          if (result.length >= limit) break;
+          if (pickedIds.has(m.id)) continue;
+          pickedIds.add(m.id);
+          result.push(m);
+        }
+      }
+    }
+
+    return result.map(({ _activityRaw, _activity, ...rest }) => rest);
   }
 
   private activityRaw(m: NormalizedMarket): number {

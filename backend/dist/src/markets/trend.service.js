@@ -40,10 +40,53 @@ let TrendService = class TrendService {
             const trendScore = this.score({ ...m, _activity: aNorm });
             return { ...m, trendScore };
         });
-        return scored
-            .sort((a, b) => (b.trendScore ?? 0) - (a.trendScore ?? 0))
-            .slice(0, limit)
-            .map(({ _activityRaw, _activity, ...rest }) => rest);
+        const sorted = scored.sort((a, b) => (b.trendScore ?? 0) - (a.trendScore ?? 0));
+        const minKalshi = Math.min(Number(process.env.MIN_KALSHI_IN_TREND ?? 3) || 3, limit);
+        const kalshiSorted = sorted.filter((m) => m.platform === 'Kalshi');
+        const nonKalshiSorted = sorted.filter((m) => m.platform !== 'Kalshi');
+        const result = [];
+        const pickedIds = new Set();
+        for (const m of nonKalshiSorted) {
+            if (result.length >= Math.max(0, limit - minKalshi))
+                break;
+            if (pickedIds.has(m.id))
+                continue;
+            pickedIds.add(m.id);
+            result.push(m);
+        }
+        for (const m of kalshiSorted) {
+            if (result.length >= limit)
+                break;
+            if (pickedIds.has(m.id))
+                continue;
+            pickedIds.add(m.id);
+            result.push(m);
+            if (result.length >= limit)
+                break;
+            if (result.length >= limit - (kalshiSorted.length - result.filter((x) => x.platform === 'Kalshi').length))
+                break;
+        }
+        if (result.length < limit) {
+            for (const m of nonKalshiSorted) {
+                if (result.length >= limit)
+                    break;
+                if (pickedIds.has(m.id))
+                    continue;
+                pickedIds.add(m.id);
+                result.push(m);
+            }
+            if (result.length < limit) {
+                for (const m of kalshiSorted) {
+                    if (result.length >= limit)
+                        break;
+                    if (pickedIds.has(m.id))
+                        continue;
+                    pickedIds.add(m.id);
+                    result.push(m);
+                }
+            }
+        }
+        return result.map(({ _activityRaw, _activity, ...rest }) => rest);
     }
     activityRaw(m) {
         const vol = Number(m.volume24h ?? m.volume ?? 0);

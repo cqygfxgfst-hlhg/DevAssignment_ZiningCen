@@ -7,7 +7,12 @@ export declare class KalshiService {
     private readonly authHeader;
     constructor(http: HttpService);
     fetchMarkets(limit?: number): Promise<NormalizedMarket[]>;
+    private buildMarketsUrl;
     private toNormalized;
-    private clamp;
+    private deriveProbability;
+    private filterRecent;
+    private toUnitPrice;
+    private parseNumber;
+    private logSample;
     private mockMarkets;
 }

@@ -318,8 +318,16 @@ export class PolymarketService {
 
   private filterRecent(data: PolymarketMarket[]): PolymarketMarket[] {
     const now = Date.now();
-    const sixMonthsAgo = now - 180 * 24 * 60 * 60 * 1000;
-    const thirtyDaysAgo = now - 30 * 24 * 60 * 60 * 1000;
+    const endPastDays =
+      Number(process.env.MARKET_END_WINDOW_DAYS_PAST ?? 7) || 7;
+    const endFutureDays =
+      Number(process.env.MARKET_END_WINDOW_DAYS_FUTURE ?? 14) || 14;
+    const createdDays =
+      Number(process.env.MARKET_CREATED_WINDOW_DAYS ?? 120) || 120;
+
+    const createdWindowAgo = now - createdDays * 24 * 60 * 60 * 1000;
+    const endWindowAgo = now - endPastDays * 24 * 60 * 60 * 1000;
+    const endWindowAhead = now + endFutureDays * 24 * 60 * 60 * 1000;
 
     return data.filter((m) => {
       if (!m.market_slug || !m.question) return false;
@@ -335,11 +343,12 @@ export class PolymarketService {
       const recentEnd =
         endTs !== undefined &&
         !Number.isNaN(endTs) &&
-        endTs >= thirtyDaysAgo;
+        endTs >= endWindowAgo &&
+        endTs <= endWindowAhead;
       const recentCreated =
         createdTs !== undefined &&
         !Number.isNaN(createdTs) &&
-        createdTs >= sixMonthsAgo;
+        createdTs >= createdWindowAgo;
 
       return recentEnd || recentCreated;
     });
