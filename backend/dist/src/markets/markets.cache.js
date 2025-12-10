@@ -22,29 +22,29 @@ let MarketsCache = MarketsCache_1 = class MarketsCache {
     constructor(redis) {
         this.redis = redis;
     }
-    key(platform, limit) {
-        return `trending:${platform ?? 'all'}:${limit ?? 'default'}`;
+    key(platform, limit, endWithinHours, createdWithinHours) {
+        return `trending:${platform ?? 'all'}:${limit ?? 'default'}:${endWithinHours ?? 'any'}:${createdWithinHours ?? 'any'}`;
     }
-    async get(platform, limit) {
+    async get(platform, limit, endWithinHours, createdWithinHours) {
         try {
-            const val = await this.redis.get(this.key(platform, limit));
+            const val = await this.redis.get(this.key(platform, limit, endWithinHours, createdWithinHours));
             if (!val)
                 return null;
             return JSON.parse(val);
         }
         catch (err) {
-            this.logger.warn(`Redis get failed for platform=${platform} limit=${limit}: ${err instanceof Error ? err.message : err}`);
+            this.logger.warn(`Redis get failed for platform=${platform} limit=${limit} endWithin=${endWithinHours} createdWithin=${createdWithinHours}: ${err instanceof Error ? err.message : err}`);
             return null;
         }
     }
-    async set(platform, limit, data) {
+    async set(platform, limit, data, endWithinHours, createdWithinHours) {
         try {
-            await this.redis.set(this.key(platform, limit), JSON.stringify(data), {
+            await this.redis.set(this.key(platform, limit, endWithinHours, createdWithinHours), JSON.stringify(data), {
                 EX: this.ttlSeconds,
             });
         }
         catch (err) {
-            this.logger.warn(`Redis set failed for platform=${platform} limit=${limit}: ${err instanceof Error ? err.message : err}`);
+            this.logger.warn(`Redis set failed for platform=${platform} limit=${limit} endWithin=${endWithinHours} createdWithin=${createdWithinHours}: ${err instanceof Error ? err.message : err}`);
         }
     }
 };

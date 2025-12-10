@@ -12,6 +12,7 @@ export declare class MarketsController {
     private readonly snapshots;
     private readonly logger;
     constructor(polymarket: PolymarketService, kalshi: KalshiService, trend: TrendService, cache: MarketsCache, snapshots: SnapshotService);
-    getTrending(platform?: TrendOptions['platform'], limit?: string): Promise<NormalizedMarket[]>;
+    getTrending(platform?: TrendOptions['platform'], limit?: string, endWithinHours?: string, createdWithinHours?: string): Promise<NormalizedMarket[]>;
     private collectMarkets;
+    private applyTimeFilters;
 }

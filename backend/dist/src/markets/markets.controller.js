@@ -34,19 +34,20 @@ let MarketsController = MarketsController_1 = class MarketsController {
         this.cache = cache;
         this.snapshots = snapshots;
     }
-    async getTrending(platform, limit = '20') {
+    async getTrending(platform, limit = '20', endWithinHours, createdWithinHours) {
         const parsedLimit = Number(limit) || 20;
         this.logger.log(`GET /markets/trending platform=${platform ?? 'all'} limit=${parsedLimit}`);
-        const cached = await this.cache.get(platform, parsedLimit);
+        const cached = await this.cache.get(platform, parsedLimit, endWithinHours, createdWithinHours);
         if (cached && cached.length > 0) {
             this.logger.log(`Cache hit for platform=${platform ?? 'all'} limit=${parsedLimit}`);
             return cached;
         }
         const markets = await this.collectMarkets(platform);
         this.logger.log(`Collected ${markets.length} markets`);
-        const ranked = this.trend.rank(markets, parsedLimit);
+        const filtered = this.applyTimeFilters(markets, endWithinHours, createdWithinHours);
+        const ranked = this.trend.rank(filtered, parsedLimit);
         void this.snapshots.save(ranked);
-        await this.cache.set(platform, parsedLimit, ranked);
+        await this.cache.set(platform, parsedLimit, ranked, endWithinHours, createdWithinHours);
         return ranked;
     }
     async collectMarkets(platform) {
@@ -62,14 +63,40 @@ let MarketsController = MarketsController_1 = class MarketsController {
         ]);
         return [...poly, ...kalshi];
     }
+    applyTimeFilters(markets, endWithinHours, createdWithinHours) {
+        const endH = Number(endWithinHours);
+        const createdH = Number(createdWithinHours);
+        const now = Date.now();
+        return markets.filter((m) => {
+            if (endH && m.endDate) {
+                const endTs = Date.parse(m.endDate);
+                if (!Number.isNaN(endTs)) {
+                    if (endTs > now + endH * 60 * 60 * 1000 || endTs < now) {
+                        return false;
+                    }
+                }
+            }
+            if (createdH && m.createdAt) {
+                const cTs = Date.parse(m.createdAt);
+                if (!Number.isNaN(cTs)) {
+                    if (cTs < now - createdH * 60 * 60 * 1000) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        });
+    }
 };
 exports.MarketsController = MarketsController;
 __decorate([
     (0, common_1.Get)('trending'),
     __param(0, (0, common_1.Query)('platform')),
     __param(1, (0, common_1.Query)('limit')),
+    __param(2, (0, common_1.Query)('endWithinHours')),
+    __param(3, (0, common_1.Query)('createdWithinHours')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:paramtypes", [Object, Object, String, String]),
     __metadata("design:returntype", Promise)
 ], MarketsController.prototype, "getTrending", null);
 exports.MarketsController = MarketsController = MarketsController_1 = __decorate([

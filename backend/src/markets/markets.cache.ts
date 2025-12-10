@@ -12,21 +12,30 @@ export class MarketsCache {
     private readonly redis: RedisClientType,
   ) {}
 
-  private key(platform?: string, limit?: number): string {
-    return `trending:${platform ?? 'all'}:${limit ?? 'default'}`;
+  private key(
+    platform?: string,
+    limit?: number,
+    endWithinHours?: string,
+    createdWithinHours?: string,
+  ): string {
+    return `trending:${platform ?? 'all'}:${limit ?? 'default'}:${endWithinHours ?? 'any'}:${createdWithinHours ?? 'any'}`;
   }
 
   async get(
     platform?: string,
     limit?: number,
+    endWithinHours?: string,
+    createdWithinHours?: string,
   ): Promise<NormalizedMarket[] | null> {
     try {
-      const val = await this.redis.get(this.key(platform, limit));
+      const val = await this.redis.get(
+        this.key(platform, limit, endWithinHours, createdWithinHours),
+      );
       if (!val) return null;
       return JSON.parse(val) as NormalizedMarket[];
     } catch (err) {
       this.logger.warn(
-        `Redis get failed for platform=${platform} limit=${limit}: ${
+        `Redis get failed for platform=${platform} limit=${limit} endWithin=${endWithinHours} createdWithin=${createdWithinHours}: ${
           err instanceof Error ? err.message : err
         }`,
       );
@@ -38,14 +47,20 @@ export class MarketsCache {
     platform: string | undefined,
     limit: number | undefined,
     data: NormalizedMarket[],
+    endWithinHours?: string,
+    createdWithinHours?: string,
   ): Promise<void> {
     try {
-      await this.redis.set(this.key(platform, limit), JSON.stringify(data), {
-        EX: this.ttlSeconds,
-      });
+      await this.redis.set(
+        this.key(platform, limit, endWithinHours, createdWithinHours),
+        JSON.stringify(data),
+        {
+          EX: this.ttlSeconds,
+        },
+      );
     } catch (err) {
       this.logger.warn(
-        `Redis set failed for platform=${platform} limit=${limit}: ${
+        `Redis set failed for platform=${platform} limit=${limit} endWithin=${endWithinHours} createdWithin=${createdWithinHours}: ${
           err instanceof Error ? err.message : err
         }`,
       );

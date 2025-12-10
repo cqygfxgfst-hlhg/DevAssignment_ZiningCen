@@ -22,13 +22,20 @@ export class MarketsController {
   async getTrending(
     @Query('platform') platform?: TrendOptions['platform'],
     @Query('limit') limit = '20',
+    @Query('endWithinHours') endWithinHours?: string,
+    @Query('createdWithinHours') createdWithinHours?: string,
   ): Promise<NormalizedMarket[]> {
     const parsedLimit = Number(limit) || 20;
     this.logger.log(
       `GET /markets/trending platform=${platform ?? 'all'} limit=${parsedLimit}`,
     );
 
-    const cached = await this.cache.get(platform, parsedLimit);
+    const cached = await this.cache.get(
+      platform,
+      parsedLimit,
+      endWithinHours,
+      createdWithinHours,
+    );
     if (cached && cached.length > 0) {
       this.logger.log(
         `Cache hit for platform=${platform ?? 'all'} limit=${parsedLimit}`,
@@ -38,10 +45,21 @@ export class MarketsController {
 
     const markets = await this.collectMarkets(platform);
     this.logger.log(`Collected ${markets.length} markets`);
-    const ranked = this.trend.rank(markets, parsedLimit);
+    const filtered = this.applyTimeFilters(
+      markets,
+      endWithinHours,
+      createdWithinHours,
+    );
+    const ranked = this.trend.rank(filtered, parsedLimit);
     // Persist snapshot (best-effort)
     void this.snapshots.save(ranked);
-    await this.cache.set(platform, parsedLimit, ranked);
+    await this.cache.set(
+      platform,
+      parsedLimit,
+      ranked,
+      endWithinHours,
+      createdWithinHours,
+    );
     return ranked;
   }
 
@@ -59,6 +77,36 @@ export class MarketsController {
       this.kalshi.fetchMarkets(),
     ]);
     return [...poly, ...kalshi];
+  }
+
+  private applyTimeFilters(
+    markets: NormalizedMarket[],
+    endWithinHours?: string,
+    createdWithinHours?: string,
+  ): NormalizedMarket[] {
+    const endH = Number(endWithinHours);
+    const createdH = Number(createdWithinHours);
+    const now = Date.now();
+
+    return markets.filter((m) => {
+      if (endH && m.endDate) {
+        const endTs = Date.parse(m.endDate);
+        if (!Number.isNaN(endTs)) {
+          if (endTs > now + endH * 60 * 60 * 1000 || endTs < now) {
+            return false;
+          }
+        }
+      }
+      if (createdH && m.createdAt) {
+        const cTs = Date.parse(m.createdAt);
+        if (!Number.isNaN(cTs)) {
+          if (cTs < now - createdH * 60 * 60 * 1000) {
+            return false;
+          }
+        }
+      }
+      return true;
+    });
   }
 }
 

@@ -6,6 +6,6 @@ export declare class MarketsCache {
     private readonly ttlSeconds;
     constructor(redis: RedisClientType);
     private key;
-    get(platform?: string, limit?: number): Promise<NormalizedMarket[] | null>;
-    set(platform: string | undefined, limit: number | undefined, data: NormalizedMarket[]): Promise<void>;
+    get(platform?: string, limit?: number, endWithinHours?: string, createdWithinHours?: string): Promise<NormalizedMarket[] | null>;
+    set(platform: string | undefined, limit: number | undefined, data: NormalizedMarket[], endWithinHours?: string, createdWithinHours?: string): Promise<void>;
 }
