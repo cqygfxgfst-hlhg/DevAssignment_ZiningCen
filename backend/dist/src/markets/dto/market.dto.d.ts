@@ -1,5 +1,5 @@
 export type SupportedPlatform = 'Polymarket' | 'Kalshi';
-export interface NormalizedMarket {
+export declare class NormalizedMarket {
     platform: SupportedPlatform;
     id: string;
     question: string;
@@ -16,13 +16,13 @@ export interface NormalizedMarket {
     _activity?: number;
     _activityRaw?: number;
 }
-export interface UserPreferences {
+export declare class UserPreferences {
     categories?: string[];
     platformWeights?: Record<string, number>;
     timeHorizon?: 'short' | 'medium' | 'long';
     volatility?: 'high' | 'low';
 }
-export interface TrendOptions {
+export declare class TrendOptions {
     limit?: number;
     platform?: SupportedPlatform;
     endWithinHours?: string;

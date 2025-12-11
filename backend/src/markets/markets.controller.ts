@@ -1,11 +1,17 @@
 import { Controller, Get, Query, Logger } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { KalshiService } from './kalshi.service';
 import { PolymarketService } from './polymarket.service';
-import { NormalizedMarket, TrendOptions, UserPreferences } from './dto/market.dto';
+import {
+  NormalizedMarket,
+  TrendOptions,
+  UserPreferences,
+} from './dto/market.dto';
 import { TrendService } from './trend.service';
 import { MarketsCache } from './markets.cache';
 import { SnapshotService } from './snapshot.service';
 
+@ApiTags('markets')
 @Controller('markets')
 export class MarketsController {
   private readonly logger = new Logger(MarketsController.name);
@@ -19,6 +25,70 @@ export class MarketsController {
   ) {}
 
   @Get('trending')
+  @ApiOperation({
+    summary: '获取热门市场趋势',
+    description:
+      '获取来自 Polymarket 和 Kalshi 等平台的聚合市场数据，支持根据热度排序、时间过滤以及个性化推荐。',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '成功返回市场列表',
+    type: [NormalizedMarket],
+  })
+  @ApiQuery({
+    name: 'platform',
+    required: false,
+    enum: ['Polymarket', 'Kalshi'],
+    description: '指定数据来源平台，不传则聚合所有平台',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: '返回结果的数量限制，默认为 20',
+    example: 20,
+  })
+  @ApiQuery({
+    name: 'endWithinHours',
+    required: false,
+    description: '过滤在指定小时数内结束的市场',
+    example: 24,
+  })
+  @ApiQuery({
+    name: 'createdWithinHours',
+    required: false,
+    description: '过滤在指定小时数内创建的市场',
+    example: 48,
+  })
+  @ApiQuery({
+    name: 'personalized',
+    required: false,
+    description: '是否启用个性化排序 (true/false)',
+    example: 'true',
+  })
+  @ApiQuery({
+    name: 'prefCategory',
+    required: false,
+    description: '个性化参数：感兴趣的类别，逗号分隔',
+    example: 'Politics,Crypto',
+  })
+  @ApiQuery({
+    name: 'prefPlatform',
+    required: false,
+    description: '个性化参数：平台权重配置',
+    example: 'Polymarket:1.5,Kalshi:0.8',
+  })
+  @ApiQuery({
+    name: 'prefHorizon',
+    required: false,
+    description: '个性化参数：时间偏好 (short/medium/long)',
+    enum: ['short', 'medium', 'long'],
+  })
+  @ApiQuery({
+    name: 'prefVolatility',
+    required: false,
+    description: '个性化参数：波动性偏好 (high/low)',
+    enum: ['high', 'low'],
+  })
   async getTrending(
     @Query('platform') platform?: TrendOptions['platform'],
     @Query('limit') limit = '20',
@@ -69,16 +139,12 @@ export class MarketsController {
         prefHorizon,
         prefVolatility,
       );
-      // Pass preferences to rank (method signature update needed in next step, casting for now or update service next)
-      // For this step, we just prepare the input. To avoid breaking build, we need to update TrendService too.
-      // But user said "Step 1". I will update TrendService signature in this step too to keep it consistent.
       ranked = this.trend.rank(filtered, parsedLimit, prefs);
     } else {
       ranked = this.trend.rank(filtered, parsedLimit);
     }
 
-    // Persist snapshot (best-effort) only for non-personalized standard ranking?
-    // Or save it anyway? Usually snapshots are for "global trending".
+    // Persist snapshot (best-effort)
     if (!isPersonalized) {
       void this.snapshots.save(ranked);
       await this.cache.set(
@@ -176,4 +242,3 @@ export class MarketsController {
     });
   }
 }
-

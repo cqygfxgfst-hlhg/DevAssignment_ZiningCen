@@ -6,8 +6,8 @@ export class TrendService {
   private readonly logger = new Logger(TrendService.name);
 
   score(market: NormalizedMarket): number {
-    // 活跃度用批内 z-score + sigmoid 放大区分度
-    const activity = market._activity ?? 0; // 占位，后续 rank() 会填充
+    // Activity uses batch z-score + sigmoid (in rank), here we just consume normalized value
+    const activity = market._activity ?? 0;
     const freshness = this.freshnessScore(market);
     const closing = this.closingSoonScore(market);
     const uncertainty = this.uncertaintyScore(market);
@@ -28,13 +28,13 @@ export class TrendService {
   ): NormalizedMarket[] {
     if (markets.length === 0) return [];
 
-    // 预计算活跃度原始分
+    // Precompute raw activity score
     const withActivity = markets.map((m) => ({
       ...m,
       _activityRaw: this.activityRaw(m),
     }));
 
-    // 计算批内均值/方差用于 z-score
+    // Batch mean/variance for z-score
     const mean =
       withActivity.reduce((acc, m) => acc + (m._activityRaw ?? 0), 0) /
       withActivity.length;
@@ -45,7 +45,7 @@ export class TrendService {
       }, 0) / withActivity.length;
     const std = Math.sqrt(variance) || 1e-6;
 
-    // 将活跃度做 z-score 再经 sigmoid 压到 0-1
+    // z-score then sigmoid into [0,1]
     const scored = withActivity.map((m) => {
       const z = ((m._activityRaw ?? 0) - mean) / std;
       const aNorm = 1 / (1 + Math.exp(-z));
@@ -130,7 +130,7 @@ export class TrendService {
     const liq = Number(m.liquidity ?? 0);
     const aVol = Math.log10(Math.max(vol, 0) + 1);
     const aLiq = Math.log10(Math.max(liq, 0) + 1);
-    // 原始活跃度不做归一化，后续 z-score
+    // Raw activity (normalized later via z-score)
     return 0.6 * aVol + 0.4 * aLiq;
   }
 

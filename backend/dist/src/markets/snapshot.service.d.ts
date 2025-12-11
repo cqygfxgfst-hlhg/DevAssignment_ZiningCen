@@ -6,9 +6,8 @@ export declare class SnapshotService {
     constructor(prisma: PrismaService);
     save(markets: NormalizedMarket[]): Promise<void>;
     getLatest(limit: number, platform?: string): Promise<{
-        id: string;
-        trendScore: number | null;
         platform: string;
+        id: string;
         question: string;
         probability: number;
         volume: number | null;
@@ -16,6 +15,7 @@ export declare class SnapshotService {
         liquidity: number | null;
         createdAt: Date | null;
         endDate: Date | null;
+        trendScore: number | null;
         marketId: string;
         fetchedAt: Date;
     }[]>;

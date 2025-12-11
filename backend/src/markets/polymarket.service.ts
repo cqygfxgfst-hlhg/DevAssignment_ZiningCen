@@ -258,7 +258,7 @@ export class PolymarketService {
       liquidity: m.liquidity,
       createdAt: m.createdAt,
       endDate: m.endDate,
-      // 便于手动核算 trendScore：activity/freshness/closingSoon/uncertainty 在 TrendService 里计算
+      // For manual trendScore sanity checks: activity/freshness/closingSoon/uncertainty computed in TrendService
     }));
     this.logger.log(`Polymarket sample (${label}):\n${JSON.stringify(sample, null, 2)}`);
   }
