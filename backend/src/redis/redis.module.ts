@@ -8,7 +8,16 @@ import { createClient } from 'redis';
       provide: 'REDIS_CLIENT',
       useFactory: async () => {
         const url = process.env.REDIS_URL ?? 'redis://localhost:6379';
-        const client = createClient({ url });
+        const useTls = url.startsWith('rediss://');
+        const client = createClient({
+          url,
+          socket: useTls
+            ? {
+                tls: true,
+                rejectUnauthorized: false, // allow Heroku/managed Redis self-signed certs
+              }
+            : undefined,
+        });
         client.on('error', (err) => {
           // eslint-disable-next-line no-console
           console.error('Redis connection error', err);
