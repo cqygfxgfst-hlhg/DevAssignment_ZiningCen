@@ -14,7 +14,13 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 
-  app.enableCors();
+  app.enableCors({
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://devassignmentziningcen.vercel.app',
+    ],
+  });
   await app.listen(process.env.PORT ?? 3001);
 }
 bootstrap();
