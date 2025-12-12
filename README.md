@@ -1,5 +1,21 @@
 # Dev Assignment 🚀
-**Unified Analytics & Trending Engine for Prediction Markets**
+
+## 0.Project Demo
+
+##### **Demo & Links**
+
+- **Video Demo (YouTube)**: https://youtu.be/YgBLT9qbeGY
+- **Live Frontend (Vercel)**: https://devassignmentziningcen.vercel.app/
+
+These links allow reviewers to quickly understand the product flow and core interactions.
+
+##### **Feature Overview**
+
+The application aggregates prediction-market data across platforms, computes a unified trend score, and presents a clean, responsive interface for browsing markets. It also includes lightweight personalization that adjusts market rankings based on user-selected interests.
+
+##### Known Issues
+
+There are two current limitations: some Kalshi event links may incorrectly route to a 404 due to inconsistent slugs, and the personalization effect is subtle because the current weighting logic is static and not deeply tuned. These will be improved in future iterations.
 
 ## 1. Project Overview
 Sharp is a high-performance aggregation service designed to unify the fragmented prediction market landscape. It ingests real-time data from major platforms like **Polymarket** and **Kalshi**, normalizing disparate schemas into a single, queryable model.
@@ -158,7 +174,38 @@ This provides a simple, predictable cache-aside pattern that protects upstream A
 npm test
 ```
 
-## 5. Next Steps / Functionality
+## 5. Detailed Features
+
+### 5.1 Multi-Platform Market Fetching
+
+- **Polymarket & Kalshi integrations**: Dedicated adapter services fetch active markets, focusing on liquid, high-volume contracts.
+- **Parallel I/O**: External API calls are executed in parallel to keep end-to-end latency low even when aggregating hundreds of markets. If one provider is temporarily unavailable or rate-limited, the service continues to return results from the remaining healthy providers.
+
+### 5.2 Unified Market Normalization
+
+- **Single contract model**: All upstream responses are mapped onto a single `NormalizedMarket` shape (platform, question, probability, volume, volume24h, liquidity, createdAt, endDate, category, url).
+- **Cross-platform comparability**: Normalization makes it possible to rank and filter markets from different providers in a single list without provider-specific branching in the client.
+
+### 5.3 Trending Ranking Engine
+
+- **Activity-aware scoring**: Markets are scored using a composite of recent volume, liquidity depth, recency and uncertainty, instead of just raw volume.
+- **Batch-relative normalization**: Within each batch, an activity score is converted to a z-score and passed through a sigmoid, making the ranking robust to scale differences between small and large datasets.
+
+### 5.4 Lightweight Personalization
+
+- **Preference model**: Optional `UserPreferences` allow callers to hint categories (e.g. Crypto, Politics), platform weights, time horizon and volatility appetite.
+- **Score boosting, not rewriting**: Personalization is applied as a small multiplicative boost on top of the base `trendScore`, so the core ranking stays stable and explainable.
+
+### 5.5 Caching & Performance
+
+- **Redis-backed cache**: Aggregated and ranked market lists are cached per-query shape (platform, limit, time filters), drastically reducing load on upstream APIs.
+- **API-first design**: The system is optimized as a backend for dashboards and analytical tools, exposing a single, well-documented HTTP endpoint that encapsulates all of the above behavior.
+
+
+
+
+
+## 6. Next Steps / Functionality
 
 - **Deeper personalization & user profiles**: Persist user preference profiles (categories, risk appetite, horizons) and learn from click/interaction data to evolve from static weights to a learned ranking model.
 
@@ -168,16 +215,16 @@ npm test
 
   
 
-## 6. Run Instructions
+## 7. Run Instructions
 
-### 6.1 Prerequisites
+### 7.1 Prerequisites
 
 - Node.js **>= 18**
 - npm **>= 9**
 - A running **PostgreSQL** instance (optional but recommended for snapshot storage).
 - A running **Redis** instance for caching.
 
-### 6.2 Backend (NestJS)
+### 7.2 Backend (NestJS)
 
 From the `backend/` directory:
 
@@ -227,7 +274,7 @@ MIN_KALSHI_IN_TREND=3
 
 > The service is designed to run with **sensible defaults**, so in the simplest setup you only need `DATABASE_URL`, and can let the rest fall back to defaults.
 
-### 6.3 Frontend (React Dashboard)
+### 7.3 Frontend (React Dashboard)
 
 From the `frontend/` directory:
 
@@ -239,31 +286,4 @@ npm start
 By default, the frontend expects the backend at `http://localhost:3001`. You can adjust the base URL in the frontend `api.ts` if needed.
 
 
-
-## 7. Detailed Features
-
-### 7.1 Multi-Platform Market Fetching
-
-- **Polymarket & Kalshi integrations**: Dedicated adapter services fetch active markets, focusing on liquid, high-volume contracts.
-- **Parallel I/O**: External API calls are executed in parallel to keep end-to-end latency low even when aggregating hundreds of markets. If one provider is temporarily unavailable or rate-limited, the service continues to return results from the remaining healthy providers.
-
-### 7.2 Unified Market Normalization
-
-- **Single contract model**: All upstream responses are mapped onto a single `NormalizedMarket` shape (platform, question, probability, volume, volume24h, liquidity, createdAt, endDate, category, url).
-- **Cross-platform comparability**: Normalization makes it possible to rank and filter markets from different providers in a single list without provider-specific branching in the client.
-
-### 7.3 Trending Ranking Engine
-
-- **Activity-aware scoring**: Markets are scored using a composite of recent volume, liquidity depth, recency and uncertainty, instead of just raw volume.
-- **Batch-relative normalization**: Within each batch, an activity score is converted to a z-score and passed through a sigmoid, making the ranking robust to scale differences between small and large datasets.
-
-### 7.4 Lightweight Personalization
-
-- **Preference model**: Optional `UserPreferences` allow callers to hint categories (e.g. Crypto, Politics), platform weights, time horizon and volatility appetite.
-- **Score boosting, not rewriting**: Personalization is applied as a small multiplicative boost on top of the base `trendScore`, so the core ranking stays stable and explainable.
-
-### 7.5 Caching & Performance
-
-- **Redis-backed cache**: Aggregated and ranked market lists are cached per-query shape (platform, limit, time filters), drastically reducing load on upstream APIs.
-- **API-first design**: The system is optimized as a backend for dashboards and analytical tools, exposing a single, well-documented HTTP endpoint that encapsulates all of the above behavior.
 
