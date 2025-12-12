@@ -6,6 +6,7 @@
 
 - **Video Demo (YouTube)**: https://youtu.be/YgBLT9qbeGY
 - **Live Frontend (Vercel)**: https://devassignmentziningcen.vercel.app/
+- **API Document**: https://dev-assignment-zining-9da0b7876044.herokuapp.com/api
 
 These links allow reviewers to quickly understand the product flow and core interactions.
 
