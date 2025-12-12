@@ -26,67 +26,67 @@ export class MarketsController {
 
   @Get('trending')
   @ApiOperation({
-    summary: '获取热门市场趋势',
+    summary: 'Get trending markets',
     description:
-      '获取来自 Polymarket 和 Kalshi 等平台的聚合市场数据，支持根据热度排序、时间过滤以及个性化推荐。',
+      'Aggregate markets from Polymarket and Kalshi; supports ranking, time filters, and optional personalization.',
   })
   @ApiResponse({
     status: 200,
-    description: '成功返回市场列表',
+    description: 'Returns the market list',
     type: [NormalizedMarket],
   })
   @ApiQuery({
     name: 'platform',
     required: false,
     enum: ['Polymarket', 'Kalshi'],
-    description: '指定数据来源平台，不传则聚合所有平台',
+    description: 'Platform source; aggregate all if omitted',
   })
   @ApiQuery({
     name: 'limit',
     required: false,
-    description: '返回结果的数量限制，默认为 20',
+    description: 'Limit result count, default 20',
     example: 20,
   })
   @ApiQuery({
     name: 'endWithinHours',
     required: false,
-    description: '过滤在指定小时数内结束的市场',
+    description: 'Filter markets ending within the given hours',
     example: 24,
   })
   @ApiQuery({
     name: 'createdWithinHours',
     required: false,
-    description: '过滤在指定小时数内创建的市场',
+    description: 'Filter markets created within the given hours',
     example: 48,
   })
   @ApiQuery({
     name: 'personalized',
     required: false,
-    description: '是否启用个性化排序 (true/false)',
+    description: 'Enable personalized ranking (true/false)',
     example: 'true',
   })
   @ApiQuery({
     name: 'prefCategory',
     required: false,
-    description: '个性化参数：感兴趣的类别，逗号分隔',
+    description: 'Personalization: preferred categories, comma-separated',
     example: 'Politics,Crypto',
   })
   @ApiQuery({
     name: 'prefPlatform',
     required: false,
-    description: '个性化参数：平台权重配置',
+    description: 'Personalization: platform weight config',
     example: 'Polymarket:1.5,Kalshi:0.8',
   })
   @ApiQuery({
     name: 'prefHorizon',
     required: false,
-    description: '个性化参数：时间偏好 (short/medium/long)',
+    description: 'Personalization: time horizon (short/medium/long)',
     enum: ['short', 'medium', 'long'],
   })
   @ApiQuery({
     name: 'prefVolatility',
     required: false,
-    description: '个性化参数：波动性偏好 (high/low)',
+    description: 'Personalization: volatility preference (high/low)',
     enum: ['high', 'low'],
   })
   async getTrending(
